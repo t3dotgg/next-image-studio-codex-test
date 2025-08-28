@@ -72,7 +72,14 @@ export async function POST(req: Request) {
     const styleSuffix = style ? `, ${style.toLowerCase()}` : "";
     const fullPrompt = `${prompt?.trim() ?? ""}${styleSuffix}`.trim();
 
-    const result = await fal.run(route, {
+    type FalImage = { url: string } | string;
+    type FalResult = {
+      images?: FalImage[];
+      image?: FalImage;
+      seed?: number;
+    };
+
+    const result = await fal.run<FalResult>(route, {
       input: {
         prompt: fullPrompt,
         seed,
@@ -86,24 +93,19 @@ export async function POST(req: Request) {
       },
     });
 
-    // Normalize output to an array of URLs
-    let urls: string[] = [];
-    // Common fal output shape
-    const anyResult = result as any;
-    if (Array.isArray(anyResult?.images)) {
-      urls = anyResult.images
-        .map((img: any) => (typeof img === "string" ? img : img?.url))
-        .filter(Boolean);
-    } else if (anyResult?.image) {
-      const img = anyResult.image;
-      const u = typeof img === "string" ? img : img?.url;
-      if (u) urls = [u];
-    }
+    const images: FalImage[] = Array.isArray(result.images)
+      ? result.images
+      : result.image
+        ? [result.image]
+        : [];
+    const urls = images
+      .map((img) => (typeof img === "string" ? img : img.url))
+      .filter((u): u is string => Boolean(u));
 
     return new Response(
       JSON.stringify({
-        images: urls.map((u: string) => ({ url: u })),
-        seed: anyResult?.seed ?? seed,
+        images: urls.map((u) => ({ url: u })),
+        seed: result.seed ?? seed,
         width,
         height,
       }),

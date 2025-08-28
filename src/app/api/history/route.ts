@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
           ORDER BY created_at DESC LIMIT 200`,
     args: [collectionId],
   });
-  const items = rs.rows.map((r: any) => ({
+  const items = rs.rows.map((r) => ({
     id: r.id as string,
     collectionId: r.collection_id as string,
     createdAt: Number(r.created_at),
@@ -99,8 +99,7 @@ export async function POST(req: NextRequest) {
       try {
         const utSecret = process.env.UPLOADTHING_SECRET;
         if (utSecret && imageUrl && !imageUrl.includes("utfs.io")) {
-          const mod = await import("uploadthing/server");
-          const { UTApi } = mod as any;
+          const { UTApi } = await import("uploadthing/server");
           const utapi = new UTApi();
           const resp = await fetch(imageUrl);
           const arrayBuf = await resp.arrayBuffer();
@@ -108,20 +107,28 @@ export async function POST(req: NextRequest) {
           const ext = type.split("/")[1] || "png";
           const name = `gen-${crypto.randomUUID()}.${ext}`;
           // Node may not have File in older versions; create a polyfill
-          const _File = (globalThis as any).File ||
+          const globalWithFile = globalThis as typeof globalThis & {
+            File?: typeof File;
+          };
+          const _File =
+            globalWithFile.File ??
             class NodeFile extends Blob {
               name: string;
               lastModified: number;
-              constructor(parts: any[], name: string, opts?: any) {
+              constructor(parts: BlobPart[], name: string, opts?: BlobPropertyBag) {
                 super(parts, opts);
                 this.name = name;
                 this.lastModified = Date.now();
               }
             };
-          const file = new _File([arrayBuf], name, { type });
-          const up = await utapi.uploadFiles([file as any]);
-          const first = Array.isArray(up) ? up[0] : up?.data?.[0] ?? up?.data;
-          const url = (first?.url as string) || (first?.ufsUrl as string);
+          const file = new _File([arrayBuf], name, { type }) as File;
+          const up = await utapi.uploadFiles([file]);
+          const first = Array.isArray(up)
+            ? up[0]
+            : Array.isArray(up.data)
+            ? up.data[0]
+            : up.data;
+          const url = first?.url || first?.ufsUrl;
           if (url) imageUrl = url;
         }
       } catch (e) {

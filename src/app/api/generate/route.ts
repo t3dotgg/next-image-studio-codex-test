@@ -88,22 +88,20 @@ export async function POST(req: Request) {
 
     // Normalize output to an array of URLs
     let urls: string[] = [];
-    // Common fal output shape
-    const anyResult = result as any;
-    if (Array.isArray(anyResult?.images)) {
-      urls = anyResult.images
-        .map((img: any) => (typeof img === "string" ? img : img?.url))
-        .filter(Boolean);
-    } else if (anyResult?.image) {
-      const img = anyResult.image;
-      const u = typeof img === "string" ? img : img?.url;
+    if (Array.isArray(result.images)) {
+      urls = result.images
+        .map((img) => (typeof img === "string" ? img : img.url))
+        .filter((u): u is string => Boolean(u));
+    } else if (result.image) {
+      const img = result.image;
+      const u = typeof img === "string" ? img : img.url;
       if (u) urls = [u];
     }
 
     return new Response(
       JSON.stringify({
-        images: urls.map((u: string) => ({ url: u })),
-        seed: anyResult?.seed ?? seed,
+        images: urls.map((u) => ({ url: u })),
+        seed: result.seed ?? seed,
         width,
         height,
       }),

@@ -146,11 +146,18 @@ export default function Home() {
       });
 
       if (!res.ok) throw new Error("Generation failed");
-      const data = await res.json();
-      const urls: string[] = (data?.images ?? []).map((i: any) => i?.url).filter(Boolean);
-      const baseSeed = data?.seed ?? seed;
-      const w = data?.width ?? undefined;
-      const h = data?.height ?? undefined;
+      const data: {
+        images?: Array<{ url?: string | null }>;
+        seed?: number;
+        width?: number;
+        height?: number;
+      } = await res.json();
+      const urls: string[] = (data.images ?? [])
+        .map((i) => i.url)
+        .filter((u): u is string => Boolean(u));
+      const baseSeed = data.seed ?? seed;
+      const w = data.width ?? undefined;
+      const h = data.height ?? undefined;
 
       const batch: Render[] = urls.map((u, i) => ({
         id: `${Date.now()}-${i}`,
@@ -161,7 +168,7 @@ export default function Home() {
         url: u,
       }));
 
-      // If for any reason no URLs came back, keep a graceful fallback
+      // If no URLs came back, keep a graceful fallback
       const finalBatch = batch.length > 0
         ? batch
         : Array.from({ length: 4 }).map((_, i) => {

@@ -9,9 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@fal-ai/serverless-client": "^0.15.0",
+    "next": "15.5.2",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.5.2"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "typescript": "^5",

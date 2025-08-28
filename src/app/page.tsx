@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Aspect = "1:1" | "3:4" | "4:3" | "16:9";
 
@@ -50,6 +50,7 @@ export default function Home() {
   const [generating, setGenerating] = useState(false);
   const [renders, setRenders] = useState<Render[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [collectionId, setCollectionId] = useState<string | null>(null);
 
   const canGenerate = prompt.trim().length > 0 && !generating;
 
@@ -65,6 +66,53 @@ export default function Home() {
         return "56.25%";
     }
   }, [aspect]);
+
+  // Initialize or read collection id from URL (?c=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    let c = url.searchParams.get("c");
+    if (!c) {
+      c = crypto.randomUUID().slice(0, 8);
+      url.searchParams.set("c", c);
+      window.history.replaceState({}, "", url.toString());
+    }
+    setCollectionId(c);
+  }, []);
+
+  // Load history for collection
+  useEffect(() => {
+    if (!collectionId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/history?collectionId=${collectionId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const items = (data?.items ?? []) as Array<{
+          prompt: string;
+          style: string | null;
+          modelId: string;
+          aspect: string;
+          seed: number;
+          width: number;
+          height: number;
+          imageUrl: string;
+          id: string;
+        }>;
+        const mapped: Render[] = items.map((it) => ({
+          id: it.id,
+          prompt: it.prompt,
+          style: it.style,
+          seed: it.seed,
+          aspect: (it.aspect as Aspect) ?? "1:1",
+          url: it.imageUrl,
+        }));
+        setRenders(mapped);
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [collectionId]);
 
   function mockImage(seedLocal: number) {
     // Fallback gradient (kept for visual continuity if needed)
@@ -101,6 +149,8 @@ export default function Home() {
       const data = await res.json();
       const urls: string[] = (data?.images ?? []).map((i: any) => i?.url).filter(Boolean);
       const baseSeed = data?.seed ?? seed;
+      const w = data?.width ?? undefined;
+      const h = data?.height ?? undefined;
 
       const batch: Render[] = urls.map((u, i) => ({
         id: `${Date.now()}-${i}`,
@@ -126,7 +176,32 @@ export default function Home() {
             } satisfies Render;
           });
 
-      setRenders((prev) => [...finalBatch, ...prev].slice(0, 20));
+      setRenders((prev) => [...finalBatch, ...prev].slice(0, 100));
+
+      // Persist to cloud history (if DB configured)
+      if (collectionId) {
+        try {
+          await fetch("/api/history", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              collectionId,
+              items: finalBatch.map((r) => ({
+                prompt: r.prompt,
+                style: r.style,
+                modelId: model.id,
+                aspect: r.aspect,
+                seed: r.seed,
+                width: w ?? 0,
+                height: h ?? 0,
+                imageUrl: r.url,
+              })),
+            }),
+          });
+        } catch (e) {
+          console.error("Failed to persist history", e);
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -292,7 +367,22 @@ export default function Home() {
           <div className="card glass p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm text-neutral-300">Prompt</div>
-              <div className="text-xs text-neutral-400">{model.name}</div>
+              <div className="text-xs text-neutral-400 flex items-center gap-3">
+                <span>{model.name}</span>
+                {collectionId && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(window.location.href);
+                      } catch {}
+                    }}
+                    className="chip"
+                    title="Copy shareable link"
+                  >
+                    Share
+                  </button>
+                )}
+              </div>
             </div>
             <textarea
               value={prompt}
@@ -397,9 +487,14 @@ export default function Home() {
                 key={`h-${r.id}`}
                 className="relative rounded-lg overflow-hidden border border-white/10 aspect-square"
               >
+                <div className="absolute inset-0 grain" />
                 <div
                   className="absolute inset-0"
-                  style={{ background: r.url }}
+                  style={{
+                    backgroundImage: `url(${r.url})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
                 />
               </div>
             ))}
